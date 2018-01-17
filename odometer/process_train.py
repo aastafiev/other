@@ -12,11 +12,13 @@ import numpy as np
 import os
 import settings as st
 
-from tqdm import tqdm
-import warnings
-warnings.filterwarnings('ignore')
+# from tqdm import tqdm
+# import warnings
+# warnings.filterwarnings('ignore')
 
 # import odometer.db as db
+
+np.seterr(all='raise')
 
 
 OUT_FILE = os.path.join(st.PROJECT_DIR, 'odometer', 'data', 'train.json')
@@ -31,9 +33,9 @@ def interpolate(x, y, xnew):
     return ynew
 
 
-async def prepare_train_test(get_conn, set_conn):
+async def process_train(get_conn):
     query = '''
-        select 
+        select distinct
             *
         from client_time_series_train tr
         where tr.odometer >= 5000
@@ -47,20 +49,21 @@ async def prepare_train_test(get_conn, set_conn):
     group_values = []
     train_values = []
     prev_key = None
-    for row in tqdm(await get_conn.execute(query)):
+    async for row in get_conn.execute(query):
         current_key = '|'.join([row.client_name, row.vin])
 
-        if prev_key and group_values and current_key != prev_key and len(group_values) > 1:
-            # train_values.append(group_values[-1])
-            x, y = tuple(), tuple()
-            for group_values_line in group_values:
-                x += (group_values_line['mmm'], )
-                y += (group_values_line['odometer'], )
+        if prev_key and current_key != prev_key:
+            if len(group_values) > 1:
+                x, y = tuple(), tuple()
+                for group_values_line in group_values:
+                    x += (group_values_line['mmm'], )
+                    y += (group_values_line['odometer'], )
 
-            x_new = tuple(i for i in range(1, x[-1]+1))
-            y_new = interpolate(x, y, x_new)
-            group_values[-1]['mean_km'] = np.mean(y_new[LAG:])
-            train_values.append(group_values[-1])
+                x_new = tuple(i for i in range(1, x[-1]+1))
+                y_new = interpolate(x, y, x_new)
+                km_arr = np.diff(y_new)
+                group_values[-1]['mean_km'] = np.mean(km_arr[LAG:])
+                train_values.append(group_values[-1])
             group_values = []
 
         group_values.append({'region': row.region,
@@ -73,10 +76,7 @@ async def prepare_train_test(get_conn, set_conn):
                              'odometer': row.odometer})
         prev_key = current_key
 
-        # rows_counter += 1
-
-        with open(OUT_FILE, 'w') as fout:
-            json.dump(train_values, fout)
+    return train_values
 
 
 async def get_postgres_engine(loop, db):
@@ -86,18 +86,23 @@ async def get_postgres_engine(loop, db):
 
 async def main(loop, db_config):
     pg_get = await get_postgres_engine(loop, db_config)
-    pg_set = await get_postgres_engine(loop, db_config)
-    async with pg_get.acquire() as conn_get, pg_set.acquire() as conn_set:
-        await prepare_train_test(conn_get, conn_set)
+    async with pg_get.acquire() as conn_get:
+        result_values = await process_train(conn_get)
+
+        print('Number of values {}'.format(len(result_values)))
+        with open(OUT_FILE, 'w') as f_out:
+            json.dump(result_values, f_out)
+
+    print('JSON file ready!')
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-
     db_conf = {'database': 'test',
                'host': 'localhost',
                'user': 'postgres',
                'password': '123',
                'port': '5432'}
 
+    loop = asyncio.get_event_loop()
     loop.run_until_complete(main(loop, db_conf))
+    loop.close()

@@ -2,19 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-# import csv
 import aiopg.sa
-# import sqlalchemy as sa
-
-# from scipy.interpolate import interp1d
-# import numpy as np
-
-# import settings as st
 
 import odometer.db as db
-
-
-# INPUT_FILE = os.path.join(st.PROJECT_DIR, 'odometer', 'data', '111_201712181057.csv')
 
 
 async def prepare_train_test(get_conn, set_conn):
@@ -52,7 +42,7 @@ async def prepare_train_test(get_conn, set_conn):
     rows_counter = 10000
     total_train_rows = 0
     total_test_rows = 0
-    for row in await get_conn.execute(query):
+    async for row in get_conn.execute(query):
         current_key = '|'.join([row.client_name, row.vin])
 
         if prev_key and current_key != prev_key:

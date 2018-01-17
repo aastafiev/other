@@ -2,19 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-# import csv
 import aiopg.sa
 import sqlalchemy as sa
 
 from scipy.interpolate import interp1d
 import numpy as np
 
-# import settings as st
-
 import odometer.db as db
-
-
-# INPUT_FILE = os.path.join(st.PROJECT_DIR, 'predict_service', 'data', '111_201712181057.csv')
 
 
 def filter_x_y(x, y):
@@ -67,7 +61,7 @@ def calc_exp_work_type(value):
     return None
 
 
-async def process_pre_train(get_conn, set_conn):
+async def interpolate_data(get_conn, set_conn):
     query = sa.select([db.pre_train_filtered]).order_by(db.pre_train_filtered.c.client_name,
                                                         db.pre_train_filtered.c.vin,
                                                         db.pre_train_filtered.c.yyy,
@@ -81,7 +75,7 @@ async def process_pre_train(get_conn, set_conn):
     prev_key = None
     rows_counter = 10000
     total_rows = 0
-    for row in await get_conn.execute(query):
+    async for row in get_conn.execute(query):
         current_key = '|'.join([row.client_name, row.vin])
 
         if prev_key and current_key != prev_key:
@@ -89,11 +83,14 @@ async def process_pre_train(get_conn, set_conn):
             if filtered_x_y[0].size > 1 and filtered_x_y[1].size > 1:  # Remove clients with the only one presence
                 rows_counter -= 1
                 # x = filtered_x_y[0], y = filtered_x_y[1]
-                ynew_arr = interpolate(filtered_x_y[0], filtered_x_y[1], x_new)
-                km_arr = np.append([-1], np.diff(ynew_arr))
-                for r_n, new_values_line in enumerate(new_values, 1):
-                    new_values_line['r_n'] = int(r_n)
-                    new_odometer = int(round(ynew_arr[r_n - 1], 0))
+                y_new_arr = interpolate(filtered_x_y[0], filtered_x_y[1], x_new)
+                km_arr = np.append([-1], np.diff(y_new_arr))
+                # for r_n, new_values_line in enumerate(new_values, 1):
+                assert y_new_arr.size == len(new_values)
+                for new_values_line in new_values:
+                    # new_values_line['r_n'] = int(r_n)
+                    r_n = new_values_line['r_n']
+                    new_odometer = int(round(y_new_arr[r_n - 1], 0))
                     new_values_line['odometer'] = new_odometer
                     new_values_line['exp_work_type'] = calc_exp_work_type(new_odometer)
                     new_values_line['km'] = int(round(km_arr[r_n - 1], 0)) if km_arr[r_n - 1] != -1 else None
@@ -119,7 +116,8 @@ async def process_pre_train(get_conn, set_conn):
                            'model': row.model,
                            'yyy': row.yyy,
                            'mmm': row.mmm,
-                           'presence': row.presence})
+                           'presence': row.presence,
+                           'r_n': row.r_n})
 
         if row.odometer != 0:
             x += (row.r_n,)
@@ -144,16 +142,16 @@ async def main(loop, db_config):
     pg_get = await get_postgres_engine(loop, db_config)
     pg_set = await get_postgres_engine(loop, db_config)
     async with pg_get.acquire() as conn_get, pg_set.acquire() as conn_set:
-        await process_pre_train(conn_get, conn_set)
+        await interpolate_data(conn_get, conn_set)
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-
     db_conf = {'database': 'test',
                'host': 'localhost',
                'user': 'postgres',
                'password': '123',
                'port': '5432'}
 
+    loop = asyncio.get_event_loop()
     loop.run_until_complete(main(loop, db_conf))
+    loop.close()
