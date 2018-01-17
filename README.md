@@ -1,6 +1,9 @@
 <b>Unix:</b><br>
 - export PYTHONPATH="$PYTHONPATH:/path_to_myapp/myapp/myapp/"
 
+<b>Git Bash</b>
+- export PYTHONPATH=$PYTHONPATH:d/LocalData/au00681/PycharmProjects/other
+
 <b>Windows:</b><br>
 - set PYTHONPATH=%PYTHONPATH%;D:\LocalData\au00681\PycharmProjects\other
 
