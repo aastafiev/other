@@ -70,18 +70,17 @@ async def process_train_gen(get_conn):
 
 
 async def get_postgres_engine(loop, db):
-    engine = await aiopg.sa.create_engine(**db, loop=loop)
-    return engine
+    return await aiopg.sa.create_engine(**db, loop=loop)
 
 
 async def main(loop, db_config):
-    pg_get = await get_postgres_engine(loop, db_config)
-    async with pg_get.acquire() as conn_get:
-        result_values = [i async for i in process_train_gen(conn_get)]
+    async with await get_postgres_engine(loop, db_config) as pg_get:
+        async with pg_get.acquire() as conn_get:
+            result_values = [i async for i in process_train_gen(conn_get)]
 
-        print('Number of values {}'.format(len(result_values)))
-        with open(OUT_FILE, 'w') as f_out:
-            json.dump(result_values, f_out)
+            print('Number of values {}'.format(len(result_values)))
+            with open(OUT_FILE, 'w') as f_out:
+                json.dump(result_values, f_out)
 
     print('JSON file ready!')
 
