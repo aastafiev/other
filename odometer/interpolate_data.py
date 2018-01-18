@@ -61,14 +61,15 @@ def calc_exp_work_type(value):
     return None
 
 
-async def interpolate_data(get_conn, set_conn):
+# async def interpolate_data(get_conn, set_conn):
+async def interpolate_data_gen(get_conn):
     query = sa.select([db.pre_train_filtered]).order_by(db.pre_train_filtered.c.client_name,
                                                         db.pre_train_filtered.c.vin,
                                                         db.pre_train_filtered.c.yyy,
                                                         db.pre_train_filtered.c.mmm)
 
     new_values = []
-    all_values = []
+    insert_values = []
     x = tuple()
     x_new = tuple()
     y = tuple()
@@ -94,13 +95,14 @@ async def interpolate_data(get_conn, set_conn):
                     new_values_line['exp_work_type'] = calc_exp_work_type(new_odometer)
                     new_values_line['km'] = int(round(km_arr[r_n - 1], 0)) if km_arr[r_n - 1] != -1 else None
 
-                all_values.extend(new_values)
+                insert_values.extend(new_values)
                 if rows_counter == 0:
-                    print('Insert rows {}'.format(len(all_values)))
-                    await set_conn.execute(db.interpolated.insert().values(all_values))
+                    print('Insert rows {}'.format(len(insert_values)))
+                    yield insert_values
+                    # await set_conn.execute(db.interpolated.insert().values(insert_values))
                     rows_counter = 10000
-                    total_rows += len(all_values)
-                    all_values = []
+                    total_rows += len(insert_values)
+                    insert_values = []
             new_values = []
 
             x = tuple()
@@ -124,23 +126,28 @@ async def interpolate_data(get_conn, set_conn):
 
         prev_key = current_key
 
-    if all_values:
-        print('Insert rows {}'.format(len(all_values)))
-        await set_conn.execute(db.interpolated.insert().values(all_values))
-        total_rows += len(all_values)
+    if insert_values:
+        print('Insert rows {}'.format(len(insert_values)))
+        yield insert_values
+        # await set_conn.execute(db.interpolated.insert().values(insert_values))
+        total_rows += len(insert_values)
         print('Total inserted rows {}'.format(total_rows))
 
 
 async def get_postgres_engine(loop, db):
-    engine = await aiopg.sa.create_engine(**db, loop=loop)
-    return engine
+    # engine = await aiopg.sa.create_engine(**db, loop=loop)
+    # return engine
+    return await aiopg.sa.create_engine(**db, loop=loop)
 
 
 async def main(loop, db_config):
-    pg_get = await get_postgres_engine(loop, db_config)
-    pg_set = await get_postgres_engine(loop, db_config)
-    async with pg_get.acquire() as conn_get, pg_set.acquire() as conn_set:
-        await interpolate_data(conn_get, conn_set)
+    # pg_get = await get_postgres_engine(loop, db_config)
+    # pg_set = await get_postgres_engine(loop, db_config)
+    async with get_postgres_engine(loop, db_config) as pg_get, get_postgres_engine(loop, db_config) as pg_set:
+        async with pg_get.acquire() as conn_get, pg_set.acquire() as conn_set:
+            # await interpolate_data(conn_get, conn_set)
+            async for values in interpolate_data_gen(conn_get):
+                await conn_set.execute(db.interpolated.insert().values(values))
 
 
 if __name__ == '__main__':
