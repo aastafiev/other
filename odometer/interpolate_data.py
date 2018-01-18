@@ -135,15 +135,11 @@ async def interpolate_data_gen(get_conn):
 
 
 async def get_postgres_engine(loop, db):
-    # engine = await aiopg.sa.create_engine(**db, loop=loop)
-    # return engine
     return await aiopg.sa.create_engine(**db, loop=loop)
 
 
 async def main(loop, db_config):
-    # pg_get = await get_postgres_engine(loop, db_config)
-    # pg_set = await get_postgres_engine(loop, db_config)
-    async with get_postgres_engine(loop, db_config) as pg_get, get_postgres_engine(loop, db_config) as pg_set:
+    async with await get_postgres_engine(loop, db_config) as pg_get, await get_postgres_engine(loop, db_config) as pg_set:
         async with pg_get.acquire() as conn_get, pg_set.acquire() as conn_set:
             # await interpolate_data(conn_get, conn_set)
             async for values in interpolate_data_gen(conn_get):
@@ -158,5 +154,8 @@ if __name__ == '__main__':
                'port': '5432'}
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(loop, db_conf))
-    loop.close()
+    try:
+        loop.run_until_complete(main(loop, db_conf))
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()

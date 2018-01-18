@@ -107,27 +107,26 @@ async def prepare_train_test_gen(get_conn):
 
 
 async def get_postgres_engine(loop, db):
-    # engine = await aiopg.sa.create_engine(**db, loop=loop)
-    # return engine
     return await aiopg.sa.create_engine(**db, loop=loop)
 
 
 async def main(loop, db_config):
-    # pg_get = await get_postgres_engine(loop, db_config)
-    # pg_set = await get_postgres_engine(loop, db_config)
-    async with get_postgres_engine(loop, db_config) as pg_get, get_postgres_engine(loop, db_config) as pg_set:
+    async with await get_postgres_engine(loop, db_config) as pg_get, await get_postgres_engine(loop, db_config) as pg_set:
         async with pg_get.acquire() as conn_get, pg_set.acquire() as conn_set:
             # await prepare_train_test(conn_get, conn_set)
             async for values in prepare_train_test_gen(conn_get):
                 await conn_set.execute(db.test.insert().values(values))
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-
     db_conf = {'database': 'test',
                'host': 'localhost',
                'user': 'postgres',
                'password': '123',
                'port': '5432'}
 
-    loop.run_until_complete(main(loop, db_conf))
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main(loop, db_conf))
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
