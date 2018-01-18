@@ -4,7 +4,6 @@
 import asyncio
 import json
 import aiopg.sa
-# import sqlalchemy as sa
 
 from scipy.interpolate import interp1d
 import numpy as np
@@ -12,18 +11,12 @@ import numpy as np
 import os
 import settings as st
 
-# from tqdm import tqdm
-# import warnings
-# warnings.filterwarnings('ignore')
-
-# import odometer.db as db
-
 np.seterr(all='raise')
 
 
 OUT_FILE = os.path.join(st.PROJECT_DIR, 'odometer', 'data', 'train.json')
 
-LAG = -5
+LAG = -3
 
 
 def interpolate(x, y, xnew):
@@ -33,7 +26,7 @@ def interpolate(x, y, xnew):
     return ynew
 
 
-async def process_train(get_conn):
+async def process_train_gen(get_conn):
     query = '''
         select distinct
             *
@@ -47,7 +40,6 @@ async def process_train(get_conn):
     '''
 
     group_values = []
-    train_values = []
     prev_key = None
     async for row in get_conn.execute(query):
         current_key = '|'.join([row.client_name, row.vin])
@@ -63,7 +55,7 @@ async def process_train(get_conn):
                 y_new = interpolate(x, y, x_new)
                 km_arr = np.diff(y_new)
                 group_values[-1]['mean_km'] = np.mean(km_arr[LAG:])
-                train_values.append(group_values[-1])
+                yield group_values[-1]
             group_values = []
 
         group_values.append({'region': row.region,
@@ -76,8 +68,6 @@ async def process_train(get_conn):
                              'odometer': row.odometer})
         prev_key = current_key
 
-    return train_values
-
 
 async def get_postgres_engine(loop, db):
     engine = await aiopg.sa.create_engine(**db, loop=loop)
@@ -87,7 +77,7 @@ async def get_postgres_engine(loop, db):
 async def main(loop, db_config):
     pg_get = await get_postgres_engine(loop, db_config)
     async with pg_get.acquire() as conn_get:
-        result_values = await process_train(conn_get)
+        result_values = [i async for i in process_train_gen(conn_get)]
 
         print('Number of values {}'.format(len(result_values)))
         with open(OUT_FILE, 'w') as f_out:
@@ -104,5 +94,8 @@ if __name__ == '__main__':
                'port': '5432'}
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(loop, db_conf))
-    loop.close()
+    try:
+        loop.run_until_complete(main(loop, db_conf))
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()

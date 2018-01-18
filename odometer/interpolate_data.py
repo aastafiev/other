@@ -85,7 +85,6 @@ async def interpolate_data(get_conn, set_conn):
                 # x = filtered_x_y[0], y = filtered_x_y[1]
                 y_new_arr = interpolate(filtered_x_y[0], filtered_x_y[1], x_new)
                 km_arr = np.append([-1], np.diff(y_new_arr))
-                # for r_n, new_values_line in enumerate(new_values, 1):
                 assert y_new_arr.size == len(new_values)
                 for new_values_line in new_values:
                     # new_values_line['r_n'] = int(r_n)
@@ -95,7 +94,6 @@ async def interpolate_data(get_conn, set_conn):
                     new_values_line['exp_work_type'] = calc_exp_work_type(new_odometer)
                     new_values_line['km'] = int(round(km_arr[r_n - 1], 0)) if km_arr[r_n - 1] != -1 else None
 
-                # new_values[-1]['validate'] = 1  # Set last presence = 1 as validate row
                 all_values.extend(new_values)
                 if rows_counter == 0:
                     print('Insert rows {}'.format(len(all_values)))
