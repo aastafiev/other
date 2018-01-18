@@ -61,7 +61,6 @@ def calc_exp_work_type(value):
     return None
 
 
-# async def interpolate_data(get_conn, set_conn):
 async def interpolate_data_gen(get_conn):
     query = sa.select([db.pre_train_filtered]).order_by(db.pre_train_filtered.c.client_name,
                                                         db.pre_train_filtered.c.vin,
@@ -99,7 +98,6 @@ async def interpolate_data_gen(get_conn):
                 if rows_counter == 0:
                     print('Insert rows {}'.format(len(insert_values)))
                     yield insert_values
-                    # await set_conn.execute(db.interpolated.insert().values(insert_values))
                     rows_counter = 10000
                     total_rows += len(insert_values)
                     insert_values = []
@@ -129,7 +127,6 @@ async def interpolate_data_gen(get_conn):
     if insert_values:
         print('Insert rows {}'.format(len(insert_values)))
         yield insert_values
-        # await set_conn.execute(db.interpolated.insert().values(insert_values))
         total_rows += len(insert_values)
         print('Total inserted rows {}'.format(total_rows))
 
@@ -141,7 +138,6 @@ async def get_postgres_engine(loop, db):
 async def main(loop, db_config):
     async with await get_postgres_engine(loop, db_config) as pg_get, await get_postgres_engine(loop, db_config) as pg_set:
         async with pg_get.acquire() as conn_get, pg_set.acquire() as conn_set:
-            # await interpolate_data(conn_get, conn_set)
             async for values in interpolate_data_gen(conn_get):
                 await conn_set.execute(db.interpolated.insert().values(values))
 

@@ -7,7 +7,6 @@ import aiopg.sa
 import odometer.db as db
 
 
-# async def prepare_train_test(get_conn, set_conn):
 async def prepare_train_test_gen(get_conn):
     query = '''
         select
@@ -69,10 +68,8 @@ async def prepare_train_test_gen(get_conn):
             if rows_counter == 0:
                 print('Insert TRAIN rows {}'.format(len(train_values)))
                 yield train_values
-                # await set_conn.execute(db.train.insert().values(train_values))
                 print('Insert TEST rows {}'.format(len(test_values)))
                 yield test_values
-                # await set_conn.execute(db.test.insert().values(test_values))
                 rows_counter = 10000
                 total_train_rows += len(train_values)
                 total_test_rows += len(test_values)
@@ -95,13 +92,11 @@ async def prepare_train_test_gen(get_conn):
     if train_values:
         print('Insert TRAIN rows {}'.format(len(train_values)))
         yield train_values
-        # await set_conn.execute(db.train.insert().values(train_values))
         total_train_rows += len(train_values)
         print('Total TRAIN inserted rows {}'.format(total_train_rows))
     if test_values:
         print('Insert TEST rows {}'.format(len(test_values)))
         yield test_values
-        # await set_conn.execute(db.test.insert().values(test_values))
         total_test_rows += len(test_values)
         print('Total TEST inserted rows {}'.format(total_test_rows))
 
@@ -113,7 +108,6 @@ async def get_postgres_engine(loop, db):
 async def main(loop, db_config):
     async with await get_postgres_engine(loop, db_config) as pg_get, await get_postgres_engine(loop, db_config) as pg_set:
         async with pg_get.acquire() as conn_get, pg_set.acquire() as conn_set:
-            # await prepare_train_test(conn_get, conn_set)
             async for values in prepare_train_test_gen(conn_get):
                 await conn_set.execute(db.test.insert().values(values))
 
